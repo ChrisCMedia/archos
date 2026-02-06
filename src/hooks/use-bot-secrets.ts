@@ -3,20 +3,34 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-interface BotSecret {
+// Matches new secure schema
+export interface BotSecret {
     id: string
-    name: string
+    user_id: string
+    key: string
     encrypted_value: string
-    provider: string | null
     created_at: string
-    updated_at: string
 }
 
-// Basic encryption (for demo - use proper encryption in production)
-const encrypt = (value: string): string => btoa(value)
-const decrypt = (value: string): string => {
+interface SecretInsert {
+    key: string
+    encrypted_value: string
+}
+
+// Simple encryption (for demo - use proper encryption in production)
+const encrypt = (value: string): string => {
+    if (typeof window !== 'undefined') {
+        return btoa(value)
+    }
+    return Buffer.from(value).toString('base64')
+}
+
+const decrypt = (encrypted: string): string => {
     try {
-        return atob(value)
+        if (typeof window !== 'undefined') {
+            return atob(encrypted)
+        }
+        return Buffer.from(encrypted, 'base64').toString()
     } catch {
         return '***'
     }
@@ -34,7 +48,7 @@ export function useBotSecrets() {
         const { data, error } = await supabase
             .from('bot_secrets')
             .select('*')
-            .order('name')
+            .order('key', { ascending: true })
 
         if (error) {
             setError(error.message)
@@ -44,21 +58,35 @@ export function useBotSecrets() {
         setLoading(false)
     }, [supabase])
 
-    const addSecret = async (name: string, value: string, provider?: string) => {
-        const encrypted = encrypt(value)
+    const addSecret = async (key: string, value: string) => {
+        const encryptedValue = encrypt(value)
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase.from('bot_secrets') as any)
             .insert({
-                name,
-                encrypted_value: encrypted,
-                provider,
-            })
+                key,
+                encrypted_value: encryptedValue,
+            } as SecretInsert)
             .select()
             .single()
 
         if (error) throw new Error(error.message)
-        setSecrets(prev => [...prev, data as BotSecret].sort((a, b) => a.name.localeCompare(b.name)))
+        setSecrets(prev => [...prev, data as BotSecret])
+        return data as BotSecret
+    }
+
+    const updateSecret = async (id: string, value: string) => {
+        const encryptedValue = encrypt(value)
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase.from('bot_secrets') as any)
+            .update({ encrypted_value: encryptedValue })
+            .eq('id', id)
+            .select()
+            .single()
+
+        if (error) throw new Error(error.message)
+        setSecrets(prev => prev.map(s => s.id === id ? data as BotSecret : s))
         return data as BotSecret
     }
 
@@ -77,28 +105,28 @@ export function useBotSecrets() {
         })
     }
 
-    const revealSecret = (id: string) => {
-        setRevealedIds(prev => new Set(prev).add(id))
-        // Auto-hide after 10 seconds
-        setTimeout(() => {
-            setRevealedIds(prev => {
-                const next = new Set(prev)
+    const toggleReveal = (id: string) => {
+        setRevealedIds(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) {
                 next.delete(id)
-                return next
-            })
-        }, 10000)
+            } else {
+                next.add(id)
+            }
+            return next
+        })
     }
+
+    const isRevealed = (id: string) => revealedIds.has(id)
 
     const getDecryptedValue = (secret: BotSecret) => {
-        if (revealedIds.has(secret.id)) {
-            return decrypt(secret.encrypted_value)
-        }
-        return '••••••••••••'
+        return decrypt(secret.encrypted_value)
     }
 
-    const copyToClipboard = async (secret: BotSecret) => {
-        const value = decrypt(secret.encrypted_value)
-        await navigator.clipboard.writeText(value)
+    const getMaskedValue = (secret: BotSecret) => {
+        const decrypted = decrypt(secret.encrypted_value)
+        if (decrypted.length <= 4) return '****'
+        return decrypted.substring(0, 4) + '****' + decrypted.substring(decrypted.length - 4)
     }
 
     useEffect(() => {
@@ -110,11 +138,12 @@ export function useBotSecrets() {
         loading,
         error,
         addSecret,
+        updateSecret,
         deleteSecret,
-        revealSecret,
+        toggleReveal,
+        isRevealed,
         getDecryptedValue,
-        copyToClipboard,
-        isRevealed: (id: string) => revealedIds.has(id),
+        getMaskedValue,
         refetch: fetchSecrets,
     }
 }

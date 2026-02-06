@@ -3,106 +3,116 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-interface BotCron {
+// Matches new secure schema
+export interface CronJob {
     id: string
-    name: string
-    description: string | null
+    user_id: string
     schedule: string
     command: string
-    enabled: boolean
-    last_run: string | null
-    next_run: string | null
-    created_at: string
-    updated_at: string
+    active: boolean
 }
 
-interface BotCronInsert {
-    name: string
-    description?: string | null
+interface CronJobInsert {
     schedule: string
     command: string
-    enabled?: boolean
+    active?: boolean
+}
+
+interface CronJobUpdate {
+    schedule?: string
+    command?: string
+    active?: boolean
 }
 
 export function useBotCron() {
-    const [cronjobs, setCronjobs] = useState<BotCron[]>([])
+    const [cronJobs, setCronJobs] = useState<CronJob[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const supabase = createClient()
 
-    const fetchCronjobs = useCallback(async () => {
+    const fetchCronJobs = useCallback(async () => {
         setLoading(true)
         const { data, error } = await supabase
             .from('bot_cron')
             .select('*')
-            .order('name')
+            .order('schedule', { ascending: true })
 
         if (error) {
             setError(error.message)
         } else {
-            setCronjobs((data as BotCron[]) || [])
+            setCronJobs((data as CronJob[]) || [])
         }
         setLoading(false)
     }, [supabase])
 
-    const createCronjob = async (cron: BotCronInsert) => {
+    const createCronJob = async (job: CronJobInsert) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase.from('bot_cron') as any)
-            .insert(cron)
+            .insert({
+                schedule: job.schedule,
+                command: job.command,
+                active: job.active ?? true,
+            })
             .select()
             .single()
 
         if (error) throw new Error(error.message)
-        setCronjobs(prev => [...prev, data as BotCron].sort((a, b) => a.name.localeCompare(b.name)))
-        return data as BotCron
+        setCronJobs(prev => [...prev, data as CronJob])
+        return data as CronJob
     }
 
-    const toggleCronjob = async (id: string, enabled: boolean) => {
+    const updateCronJob = async (id: string, updates: CronJobUpdate) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (supabase.from('bot_cron') as any)
-            .update({ enabled })
+        const { data, error } = await (supabase.from('bot_cron') as any)
+            .update(updates)
             .eq('id', id)
+            .select()
+            .single()
 
         if (error) throw new Error(error.message)
-        setCronjobs(prev => prev.map(c => c.id === id ? { ...c, enabled } : c))
+        setCronJobs(prev => prev.map(j => j.id === id ? data as CronJob : j))
+        return data as CronJob
     }
 
-    const deleteCronjob = async (id: string) => {
+    const toggleCronJob = async (id: string, active: boolean) => {
+        return updateCronJob(id, { active })
+    }
+
+    const deleteCronJob = async (id: string) => {
         const { error } = await supabase
             .from('bot_cron')
             .delete()
             .eq('id', id)
 
         if (error) throw new Error(error.message)
-        setCronjobs(prev => prev.filter(c => c.id !== id))
+        setCronJobs(prev => prev.filter(j => j.id !== id))
     }
 
     useEffect(() => {
-        fetchCronjobs()
+        fetchCronJobs()
 
         const channel = supabase
-            .channel('bot-cron-changes')
+            .channel('cron-changes')
             .on(
-                'postgres_changes',
+                'postgres_changes' as const,
                 { event: '*', schema: 'public', table: 'bot_cron' },
-                () => {
-                    fetchCronjobs()
-                }
+                () => fetchCronJobs()
             )
             .subscribe()
 
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [fetchCronjobs, supabase])
+    }, [fetchCronJobs, supabase])
 
     return {
-        cronjobs,
+        cronJobs,
         loading,
         error,
-        createCronjob,
-        toggleCronjob,
-        deleteCronjob,
-        refetch: fetchCronjobs,
+        createCronJob,
+        updateCronJob,
+        toggleCronJob,
+        deleteCronJob,
+        refetch: fetchCronJobs,
     }
 }

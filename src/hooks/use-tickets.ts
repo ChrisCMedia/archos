@@ -3,42 +3,32 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+// Matches new secure schema
 export interface Ticket {
     id: string
+    user_id: string
     title: string
-    description: string | null
     status: 'backlog' | 'active' | 'review' | 'done'
-    agent_mode: 'manual' | 'assisted' | 'autonomous'
     priority: 'low' | 'medium' | 'high' | 'critical'
-    assignee: string | null
-    tags: string[]
-    client_id: string | null
-    project_id: string | null
-    source: string | null
-    due_date: string | null
-    metadata: Record<string, unknown>
+    agent_mode: 'manual' | 'assisted' | 'autonomous'
+    context: Record<string, unknown> | null
     created_at: string
-    updated_at: string
 }
 
 interface TicketInsert {
     title: string
-    description?: string | null
-    status?: 'backlog' | 'active' | 'review' | 'done'
-    agent_mode?: 'manual' | 'assisted' | 'autonomous'
-    priority?: 'low' | 'medium' | 'high' | 'critical'
-    assignee?: string | null
-    tags?: string[]
+    status?: string
+    priority?: string
+    agent_mode?: string
+    context?: Record<string, unknown>
 }
 
 interface TicketUpdate {
     title?: string
-    description?: string | null
-    status?: 'backlog' | 'active' | 'review' | 'done'
-    agent_mode?: 'manual' | 'assisted' | 'autonomous'
-    priority?: 'low' | 'medium' | 'high' | 'critical'
-    assignee?: string | null
-    tags?: string[]
+    status?: string
+    priority?: string
+    agent_mode?: string
+    context?: Record<string, unknown>
 }
 
 export function useTickets() {
@@ -47,7 +37,6 @@ export function useTickets() {
     const [error, setError] = useState<string | null>(null)
     const supabase = createClient()
 
-    // Fetch all tickets
     const fetchTickets = useCallback(async () => {
         setLoading(true)
         const { data, error } = await supabase
@@ -63,21 +52,24 @@ export function useTickets() {
         setLoading(false)
     }, [supabase])
 
-    // Create a new ticket
     const createTicket = async (ticket: TicketInsert) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase.from('tickets') as any)
-            .insert(ticket)
+            .insert({
+                title: ticket.title,
+                status: ticket.status || 'backlog',
+                priority: ticket.priority || 'medium',
+                agent_mode: ticket.agent_mode || 'manual',
+                context: ticket.context || null,
+            })
             .select()
             .single()
 
-        if (error) {
-            throw new Error(error.message)
-        }
+        if (error) throw new Error(error.message)
+        setTickets(prev => [data as Ticket, ...prev])
         return data as Ticket
     }
 
-    // Update a ticket
     const updateTicket = async (id: string, updates: TicketUpdate) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase.from('tickets') as any)
@@ -86,25 +78,21 @@ export function useTickets() {
             .select()
             .single()
 
-        if (error) {
-            throw new Error(error.message)
-        }
+        if (error) throw new Error(error.message)
+        setTickets(prev => prev.map(t => t.id === id ? data as Ticket : t))
         return data as Ticket
     }
 
-    // Delete a ticket
     const deleteTicket = async (id: string) => {
         const { error } = await supabase
             .from('tickets')
             .delete()
             .eq('id', id)
 
-        if (error) {
-            throw new Error(error.message)
-        }
+        if (error) throw new Error(error.message)
+        setTickets(prev => prev.filter(t => t.id !== id))
     }
 
-    // Subscribe to realtime changes
     useEffect(() => {
         fetchTickets()
 
@@ -113,10 +101,7 @@ export function useTickets() {
             .on(
                 'postgres_changes' as const,
                 { event: '*', schema: 'public', table: 'tickets' },
-                () => {
-                    // Refetch on any change
-                    fetchTickets()
-                }
+                () => fetchTickets()
             )
             .subscribe()
 

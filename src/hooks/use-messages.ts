@@ -3,42 +3,33 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-interface Message {
+// Matches new secure schema
+export interface Message {
     id: string
-    ticket_id: string | null
-    role: 'user' | 'assistant' | 'system'
-    channel: 'telegram' | 'email' | 'web'
+    user_id: string
+    role: 'user' | 'assistant'
     content: string
-    metadata: Record<string, unknown>
     created_at: string
 }
 
 interface MessageInsert {
-    ticket_id?: string | null
-    role: 'user' | 'assistant' | 'system'
-    channel?: 'telegram' | 'email' | 'web'
+    role: 'user' | 'assistant'
     content: string
 }
 
-export function useMessages(ticketId?: string) {
+export function useMessages() {
     const [messages, setMessages] = useState<Message[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const supabase = createClient()
 
-    // Fetch messages
     const fetchMessages = useCallback(async () => {
         setLoading(true)
-        let query = supabase
+        const { data, error } = await supabase
             .from('messages')
             .select('*')
             .order('created_at', { ascending: true })
-
-        if (ticketId) {
-            query = query.eq('ticket_id', ticketId)
-        }
-
-        const { data, error } = await query
+            .limit(100)
 
         if (error) {
             setError(error.message)
@@ -46,51 +37,56 @@ export function useMessages(ticketId?: string) {
             setMessages((data as Message[]) || [])
         }
         setLoading(false)
-    }, [supabase, ticketId])
+    }, [supabase])
 
-    // Send a new message
     const sendMessage = async (message: MessageInsert) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase.from('messages') as any)
-            .insert(message)
+            .insert({
+                role: message.role,
+                content: message.content,
+            })
             .select()
             .single()
 
-        if (error) {
-            throw new Error(error.message)
-        }
+        if (error) throw new Error(error.message)
+        setMessages(prev => [...prev, data as Message])
         return data as Message
     }
 
-    // Subscribe to realtime changes
+    const clearMessages = async () => {
+        const { error } = await supabase
+            .from('messages')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000') // Delete all
+
+        if (error) throw new Error(error.message)
+        setMessages([])
+    }
+
     useEffect(() => {
         fetchMessages()
 
         const channel = supabase
             .channel('messages-changes')
             .on(
-                'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'messages' },
-                (payload: { new: Message }) => {
-                    const newMessage = payload.new
-                    // Only add if it matches our filter
-                    if (!ticketId || newMessage.ticket_id === ticketId) {
-                        setMessages(prev => [...prev, newMessage])
-                    }
-                }
+                'postgres_changes' as const,
+                { event: '*', schema: 'public', table: 'messages' },
+                () => fetchMessages()
             )
             .subscribe()
 
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [fetchMessages, supabase, ticketId])
+    }, [fetchMessages, supabase])
 
     return {
         messages,
         loading,
         error,
         sendMessage,
+        clearMessages,
         refetch: fetchMessages,
     }
 }

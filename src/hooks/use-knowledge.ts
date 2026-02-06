@@ -3,31 +3,29 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+// Matches new secure schema
 export interface KnowledgeEntry {
     id: string
+    user_id: string
     title: string
-    content: string
-    category: string
-    tags: string[]
-    is_pinned: boolean
+    category: string | null
+    content: string | null
+    tags: string[] | null
     created_at: string
-    updated_at: string
 }
 
 interface KnowledgeInsert {
     title: string
-    content?: string
     category?: string
+    content?: string
     tags?: string[]
-    is_pinned?: boolean
 }
 
 interface KnowledgeUpdate {
     title?: string
-    content?: string
     category?: string
+    content?: string
     tags?: string[]
-    is_pinned?: boolean
 }
 
 export function useKnowledge(category?: string) {
@@ -41,8 +39,7 @@ export function useKnowledge(category?: string) {
         let query = supabase
             .from('knowledge_vault')
             .select('*')
-            .order('is_pinned', { ascending: false })
-            .order('updated_at', { ascending: false })
+            .order('created_at', { ascending: false })
 
         if (category && category !== 'All') {
             query = query.eq('category', category)
@@ -61,7 +58,12 @@ export function useKnowledge(category?: string) {
     const createEntry = async (entry: KnowledgeInsert) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase.from('knowledge_vault') as any)
-            .insert(entry)
+            .insert({
+                title: entry.title,
+                category: entry.category || 'General',
+                content: entry.content || '',
+                tags: entry.tags || [],
+            })
             .select()
             .single()
 
@@ -93,13 +95,10 @@ export function useKnowledge(category?: string) {
         setEntries(prev => prev.filter(e => e.id !== id))
     }
 
-    const togglePin = async (id: string, isPinned: boolean) => {
-        return updateEntry(id, { is_pinned: !isPinned })
-    }
-
-    const getCategories = useCallback(() => {
-        const cats = new Set(entries.map(e => e.category))
-        return ['All', ...Array.from(cats).sort()]
+    const getCategories = useCallback((): string[] => {
+        const cats = entries.map(e => e.category).filter((c): c is string => c !== null)
+        const uniqueCats = Array.from(new Set(cats)).sort()
+        return ['All', ...uniqueCats]
     }, [entries])
 
     useEffect(() => {
@@ -110,9 +109,7 @@ export function useKnowledge(category?: string) {
             .on(
                 'postgres_changes' as const,
                 { event: '*', schema: 'public', table: 'knowledge_vault' },
-                () => {
-                    fetchEntries()
-                }
+                () => fetchEntries()
             )
             .subscribe()
 
@@ -128,7 +125,6 @@ export function useKnowledge(category?: string) {
         createEntry,
         updateEntry,
         deleteEntry,
-        togglePin,
         getCategories,
         refetch: fetchEntries,
     }

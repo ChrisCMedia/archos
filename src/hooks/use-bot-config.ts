@@ -3,47 +3,37 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+// Config values interface
 interface ConfigValues {
+    system_prompt?: string
+    temperature?: number
+    model?: string
+    streaming?: boolean
+    autonomous_mode?: boolean
     [key: string]: unknown
-    system_prompt: string
-    temperature: number
-    model: string
-    streaming: boolean
-    autonomous_mode: boolean
-    max_tokens?: number
-    auto_reply?: boolean
-    auto_execute?: boolean
-    context_limit?: number
-    voice_id?: string
 }
 
-const defaultConfig: ConfigValues = {
-    system_prompt: '',
-    temperature: 0.7,
-    model: 'claude-opus-4',
-    streaming: true,
-    autonomous_mode: false,
-    max_tokens: 2048,
-    auto_reply: true,
-    auto_execute: false,
-    context_limit: 10,
+interface ConfigRow {
+    id: string
+    user_id: string
+    key: string
+    value: unknown
+    updated_at: string
 }
 
 export function useBotConfig() {
-    const [config, setConfig] = useState<ConfigValues>(defaultConfig)
+    const [config, setConfig] = useState<ConfigValues>({})
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const supabase = createClient()
 
-    // Parse config rows into structured object
+    // Parse config rows into object
     const parseConfig = (rows: Array<{ key: string; value: unknown }>): ConfigValues => {
-        const configObj: ConfigValues = { ...defaultConfig }
-
-        rows.forEach(row => {
-            configObj[row.key] = row.value
-        })
-
-        return configObj
+        const result: ConfigValues = {}
+        for (const row of rows) {
+            result[row.key] = row.value
+        }
+        return result
     }
 
     // Fetch all config
@@ -63,14 +53,28 @@ export function useBotConfig() {
 
     // Update a config value
     const updateConfig = async (key: string, value: unknown) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (supabase.from('bot_config') as any).upsert(
-            { key, value },
-            { onConflict: 'key' }
-        )
+        // Check if config exists first
+        const { data: existing } = await supabase
+            .from('bot_config')
+            .select('id')
+            .eq('key', key)
+            .single()
 
-        if (error) {
-            throw new Error(error.message)
+        if (existing) {
+            // Update existing
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase.from('bot_config') as any)
+                .update({ value })
+                .eq('key', key)
+
+            if (error) throw new Error(error.message)
+        } else {
+            // Insert new
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase.from('bot_config') as any)
+                .insert({ key, value })
+
+            if (error) throw new Error(error.message)
         }
 
         setConfig(prev => ({ ...prev, [key]: value }))
@@ -78,35 +82,25 @@ export function useBotConfig() {
 
     // Save multiple config values
     const saveConfig = async (values: Partial<ConfigValues>) => {
-        const entries = Object.entries(values)
-
-        for (const [key, value] of entries) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error } = await (supabase.from('bot_config') as any).upsert(
-                { key, value },
-                { onConflict: 'key' }
-            )
-
-            if (error) {
-                console.error(`Failed to save config ${key}:`, error)
-            }
+        for (const [key, value] of Object.entries(values)) {
+            await updateConfig(key, value)
         }
-
-        setConfig(prev => ({ ...prev, ...values }))
     }
 
-    // Subscribe to realtime changes
+    // Get a specific config value
+    const getConfig = <T>(key: string, defaultValue: T): T => {
+        return (config[key] as T) ?? defaultValue
+    }
+
     useEffect(() => {
         fetchConfig()
 
         const channel = supabase
-            .channel('bot-config-changes')
+            .channel('config-changes')
             .on(
-                'postgres_changes',
+                'postgres_changes' as const,
                 { event: '*', schema: 'public', table: 'bot_config' },
-                () => {
-                    fetchConfig()
-                }
+                () => fetchConfig()
             )
             .subscribe()
 
@@ -121,6 +115,7 @@ export function useBotConfig() {
         error,
         updateConfig,
         saveConfig,
+        getConfig,
         refetch: fetchConfig,
     }
 }

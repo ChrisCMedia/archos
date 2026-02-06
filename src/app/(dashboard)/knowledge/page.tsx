@@ -7,8 +7,6 @@ import {
     Plus,
     Edit3,
     Trash2,
-    Pin,
-    PinOff,
     Folder,
     FileText,
     Search,
@@ -46,7 +44,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useKnowledge, KnowledgeEntry } from '@/hooks/use-knowledge'
 
 export default function KnowledgeVaultPage() {
-    const { entries, loading, createEntry, updateEntry, deleteEntry, togglePin, getCategories } = useKnowledge()
+    const { entries, loading, createEntry, updateEntry, deleteEntry, getCategories } = useKnowledge()
     const { toast } = useToast()
     const [selectedEntry, setSelectedEntry] = useState<KnowledgeEntry | null>(null)
     const [isEditing, setIsEditing] = useState(false)
@@ -74,7 +72,7 @@ export default function KnowledgeVaultPage() {
     // Filter entries
     const filteredEntries = entries.filter(entry => {
         const matchesSearch = entry.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            entry.content.toLowerCase().includes(searchQuery.toLowerCase())
+            (entry.content?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
         const matchesCategory = selectedCategory === 'All' || entry.category === selectedCategory
         return matchesSearch && matchesCategory
     })
@@ -95,8 +93,8 @@ export default function KnowledgeVaultPage() {
         if (selectedEntry) {
             setEditForm({
                 title: selectedEntry.title,
-                content: selectedEntry.content,
-                category: selectedEntry.category,
+                content: selectedEntry.content || '',
+                category: selectedEntry.category || 'General',
             })
             setIsEditing(true)
         }
@@ -170,30 +168,10 @@ export default function KnowledgeVaultPage() {
         }
     }
 
-    const handleTogglePin = async (entry: KnowledgeEntry) => {
-        try {
-            const updated = await togglePin(entry.id, entry.is_pinned)
-            if (selectedEntry?.id === entry.id) {
-                setSelectedEntry(updated)
-            }
-            toast({
-                title: entry.is_pinned ? 'Unpinned' : 'Pinned',
-                description: `Entry ${entry.is_pinned ? 'unpinned' : 'pinned'}.`,
-            })
-        } catch {
-            toast({
-                title: 'Error',
-                description: 'Failed to toggle pin',
-                variant: 'destructive',
-            })
-        }
-    }
-
     // Simple markdown renderer
     const renderMarkdown = (content: string) => {
         const lines = content.split('\n')
         return lines.map((line, i) => {
-            // Headers
             if (line.startsWith('### ')) {
                 return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{line.slice(4)}</h3>
             }
@@ -203,32 +181,21 @@ export default function KnowledgeVaultPage() {
             if (line.startsWith('# ')) {
                 return <h1 key={i} className="text-2xl font-bold mt-6 mb-4">{line.slice(2)}</h1>
             }
-            // Code blocks
             if (line.startsWith('```')) {
-                return null // Skip code fence markers
+                return null
             }
-            // List items
             if (line.startsWith('- ')) {
                 return <li key={i} className="ml-4 text-muted-foreground">{line.slice(2)}</li>
             }
-            if (line.startsWith('- [ ] ')) {
-                return <li key={i} className="ml-4 flex items-center gap-2">
-                    <input type="checkbox" disabled className="rounded" />
-                    <span className="text-muted-foreground">{line.slice(6)}</span>
-                </li>
-            }
-            // Bold
             if (line.includes('**')) {
                 const parts = line.split(/\*\*(.*?)\*\*/g)
                 return <p key={i} className="text-muted-foreground">
                     {parts.map((part, j) => j % 2 === 1 ? <strong key={j} className="text-foreground">{part}</strong> : part)}
                 </p>
             }
-            // Empty lines
             if (line.trim() === '') {
                 return <br key={i} />
             }
-            // Regular text
             return <p key={i} className="text-muted-foreground">{line}</p>
         })
     }
@@ -316,16 +283,11 @@ export default function KnowledgeVaultPage() {
                                             >
                                                 <FileText className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
                                                 <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center gap-1">
-                                                        {entry.is_pinned && (
-                                                            <Pin className="w-3 h-3 text-amber-500" />
-                                                        )}
-                                                        <span className="text-sm font-medium truncate">
-                                                            {entry.title}
-                                                        </span>
-                                                    </div>
+                                                    <span className="text-sm font-medium truncate block">
+                                                        {entry.title}
+                                                    </span>
                                                     <span className="text-xs text-muted-foreground">
-                                                        {entry.category}
+                                                        {entry.category || 'General'}
                                                     </span>
                                                 </div>
                                                 {selectedEntry?.id === entry.id && (
@@ -347,15 +309,7 @@ export default function KnowledgeVaultPage() {
                             <>
                                 {/* Entry Header */}
                                 <div className="flex items-center justify-between p-4 border-b border-border">
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="outline">{selectedEntry.category}</Badge>
-                                        {selectedEntry.is_pinned && (
-                                            <Badge variant="secondary" className="bg-amber-500/10 text-amber-500">
-                                                <Pin className="w-3 h-3 mr-1" />
-                                                Pinned
-                                            </Badge>
-                                        )}
-                                    </div>
+                                    <Badge variant="outline">{selectedEntry.category || 'General'}</Badge>
                                     <div className="flex items-center gap-1">
                                         {isEditing ? (
                                             <>
@@ -382,17 +336,6 @@ export default function KnowledgeVaultPage() {
                                             </>
                                         ) : (
                                             <>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => handleTogglePin(selectedEntry)}
-                                                >
-                                                    {selectedEntry.is_pinned ? (
-                                                        <PinOff className="w-4 h-4" />
-                                                    ) : (
-                                                        <Pin className="w-4 h-4" />
-                                                    )}
-                                                </Button>
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
@@ -448,10 +391,10 @@ export default function KnowledgeVaultPage() {
                                         <article className="prose prose-invert max-w-3xl">
                                             <h1 className="text-3xl font-bold mb-6">{selectedEntry.title}</h1>
                                             <div className="space-y-0">
-                                                {renderMarkdown(selectedEntry.content)}
+                                                {renderMarkdown(selectedEntry.content || '')}
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-8 pt-4 border-t border-border">
-                                                Last updated: {new Date(selectedEntry.updated_at).toLocaleString()}
+                                                Created: {new Date(selectedEntry.created_at).toLocaleString()}
                                             </p>
                                         </article>
                                     )}

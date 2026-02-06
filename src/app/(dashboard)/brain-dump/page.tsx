@@ -175,11 +175,6 @@ export default function BrainDumpPage() {
                                                 <p className="text-sm font-medium truncate">
                                                     {thought.title}
                                                 </p>
-                                                {thought.description && (
-                                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                                                        {thought.description}
-                                                    </p>
-                                                )}
                                                 <p className="text-[10px] text-muted-foreground/60 mt-1">
                                                     {new Date(thought.created_at).toLocaleDateString('en-US', {
                                                         month: 'short',

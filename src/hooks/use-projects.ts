@@ -3,26 +3,32 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-interface Project {
+// Matches new secure schema
+export interface Project {
     id: string
-    client_id: string
+    user_id: string
+    client_id: string | null
     name: string
-    description: string | null
     status: 'planning' | 'active' | 'paused' | 'completed' | 'cancelled'
-    budget: number | null
-    currency: string
+    value: number | null
     deadline: string | null
     created_at: string
-    updated_at: string
 }
 
 interface ProjectInsert {
-    client_id: string
     name: string
-    description?: string | null
-    status?: 'planning' | 'active' | 'paused' | 'completed' | 'cancelled'
-    budget?: number | null
-    deadline?: string | null
+    client_id?: string
+    status?: string
+    value?: number
+    deadline?: string
+}
+
+interface ProjectUpdate {
+    name?: string
+    client_id?: string
+    status?: string
+    value?: number
+    deadline?: string
 }
 
 export function useProjects(clientId?: string) {
@@ -55,12 +61,31 @@ export function useProjects(clientId?: string) {
     const createProject = async (project: ProjectInsert) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase.from('projects') as any)
-            .insert(project)
+            .insert({
+                name: project.name,
+                client_id: project.client_id || null,
+                status: project.status || 'active',
+                value: project.value || null,
+                deadline: project.deadline || null,
+            })
             .select()
             .single()
 
         if (error) throw new Error(error.message)
         setProjects(prev => [data as Project, ...prev])
+        return data as Project
+    }
+
+    const updateProject = async (id: string, updates: ProjectUpdate) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase.from('projects') as any)
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single()
+
+        if (error) throw new Error(error.message)
+        setProjects(prev => prev.map(p => p.id === id ? data as Project : p))
         return data as Project
     }
 
@@ -80,11 +105,9 @@ export function useProjects(clientId?: string) {
         const channel = supabase
             .channel('projects-changes')
             .on(
-                'postgres_changes',
+                'postgres_changes' as const,
                 { event: '*', schema: 'public', table: 'projects' },
-                () => {
-                    fetchProjects()
-                }
+                () => fetchProjects()
             )
             .subscribe()
 
@@ -98,6 +121,7 @@ export function useProjects(clientId?: string) {
         loading,
         error,
         createProject,
+        updateProject,
         deleteProject,
         refetch: fetchProjects,
     }

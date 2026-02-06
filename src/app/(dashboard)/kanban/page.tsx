@@ -29,7 +29,6 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -75,85 +74,62 @@ export default function KanbanPage() {
     const [isCreating, setIsCreating] = useState(false)
     const [newTicket, setNewTicket] = useState<{
         title: string
-        description: string
         priority: TicketPriority
         agent_mode: TicketAgentMode
     }>({
         title: '',
-        description: '',
         priority: 'medium',
         agent_mode: 'manual',
     })
 
-    const handleDragStart = (e: React.DragEvent, ticket: Ticket) => {
+    const handleDragStart = (ticket: Ticket) => {
         setDraggedTicket(ticket)
-        e.dataTransfer.effectAllowed = 'move'
     }
 
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault()
-        e.dataTransfer.dropEffect = 'move'
     }
 
-    const handleDrop = async (e: React.DragEvent, status: TicketStatus) => {
-        e.preventDefault()
-        if (draggedTicket && draggedTicket.status !== status) {
-            try {
-                await updateTicket(draggedTicket.id, { status })
-                toast({
-                    title: 'Ticket moved',
-                    description: `"${draggedTicket.title}" moved to ${status}`,
-                })
-            } catch (err) {
-                toast({
-                    title: 'Error',
-                    description: 'Failed to move ticket',
-                    variant: 'destructive',
-                })
-            }
+    const handleDrop = async (targetStatus: TicketStatus) => {
+        if (!draggedTicket || draggedTicket.status === targetStatus) {
+            setDraggedTicket(null)
+            return
+        }
+
+        try {
+            await updateTicket(draggedTicket.id, { status: targetStatus })
+            toast({
+                title: 'Ticket moved',
+                description: `"${draggedTicket.title}" moved to ${targetStatus}`,
+            })
+        } catch {
+            toast({
+                title: 'Error',
+                description: 'Failed to move ticket',
+                variant: 'destructive',
+            })
         }
         setDraggedTicket(null)
     }
 
-    const toggleAgentMode = async (ticket: Ticket) => {
-        const modes: TicketAgentMode[] = ['manual', 'assisted', 'autonomous']
-        const currentIndex = modes.indexOf(ticket.agent_mode as TicketAgentMode)
-        const nextMode = modes[(currentIndex + 1) % modes.length]
-
-        try {
-            await updateTicket(ticket.id, { agent_mode: nextMode })
-            toast({
-                title: 'Agent mode updated',
-                description: `Set to ${nextMode}`,
-            })
-        } catch (err) {
-            toast({
-                title: 'Error',
-                description: 'Failed to update agent mode',
-                variant: 'destructive',
-            })
-        }
-    }
-
-    const handleCreateTicket = async () => {
-        if (!newTicket.title) return
+    const handleCreate = async () => {
+        if (!newTicket.title.trim()) return
 
         setIsCreating(true)
         try {
             await createTicket({
                 title: newTicket.title,
-                description: newTicket.description || null,
                 priority: newTicket.priority,
                 agent_mode: newTicket.agent_mode,
                 status: 'backlog',
             })
+            setIsDialogOpen(false)
+            setNewTicket({ title: '', priority: 'medium', agent_mode: 'manual' })
             toast({
                 title: 'Ticket created',
-                description: `"${newTicket.title}" added to backlog`,
+                description: 'Added to backlog',
             })
-            setNewTicket({ title: '', description: '', priority: 'medium', agent_mode: 'manual' })
-            setIsDialogOpen(false)
-        } catch (err) {
+        } catch {
             toast({
                 title: 'Error',
                 description: 'Failed to create ticket',
@@ -164,17 +140,37 @@ export default function KanbanPage() {
         }
     }
 
-    const handleDeleteTicket = async (ticket: Ticket) => {
+    const handleDelete = async (ticket: Ticket) => {
         try {
             await deleteTicket(ticket.id)
             toast({
                 title: 'Ticket deleted',
                 description: `"${ticket.title}" has been removed`,
             })
-        } catch (err) {
+        } catch {
             toast({
                 title: 'Error',
                 description: 'Failed to delete ticket',
+                variant: 'destructive',
+            })
+        }
+    }
+
+    const cycleAgentMode = async (ticket: Ticket) => {
+        const modes: TicketAgentMode[] = ['manual', 'assisted', 'autonomous']
+        const currentIndex = modes.indexOf(ticket.agent_mode)
+        const nextMode = modes[(currentIndex + 1) % modes.length]
+
+        try {
+            await updateTicket(ticket.id, { agent_mode: nextMode })
+            toast({
+                title: 'Agent mode changed',
+                description: `Now: ${nextMode}`,
+            })
+        } catch {
+            toast({
+                title: 'Error',
+                description: 'Failed to update agent mode',
                 variant: 'destructive',
             })
         }
@@ -192,27 +188,27 @@ export default function KanbanPage() {
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="space-y-6"
+            className="h-full"
         >
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-6">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Hybrid Kanban</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Manage work. Delegate to Klaus when ready.
+                    <p className="text-muted-foreground">
+                        Drag to move • Click mode icon to cycle agent mode
                     </p>
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-2">
-                            <Plus className="w-4 h-4" />
-                            New Ticket
-                        </Button>
-                    </DialogTrigger>
+                    <Button onClick={() => setIsDialogOpen(true)}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        New Ticket
+                    </Button>
                     <DialogContent className="bg-card border-border">
                         <DialogHeader>
                             <DialogTitle>Create New Ticket</DialogTitle>
-                            <DialogDescription>Add a new task to the backlog</DialogDescription>
+                            <DialogDescription>
+                                Add a new task to the kanban board
+                            </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
                             <div className="space-y-2">
@@ -220,23 +216,17 @@ export default function KanbanPage() {
                                 <Input
                                     value={newTicket.title}
                                     onChange={(e) => setNewTicket({ ...newTicket, title: e.target.value })}
-                                    placeholder="Enter ticket title"
-                                    className="bg-secondary border-border"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Description</Label>
-                                <Input
-                                    value={newTicket.description}
-                                    onChange={(e) => setNewTicket({ ...newTicket, description: e.target.value })}
-                                    placeholder="Brief description"
+                                    placeholder="What needs to be done?"
                                     className="bg-secondary border-border"
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Priority</Label>
-                                    <Select value={newTicket.priority} onValueChange={(v) => setNewTicket({ ...newTicket, priority: v as TicketPriority })}>
+                                    <Select
+                                        value={newTicket.priority}
+                                        onValueChange={(v) => setNewTicket({ ...newTicket, priority: v as TicketPriority })}
+                                    >
                                         <SelectTrigger className="bg-secondary border-border">
                                             <SelectValue />
                                         </SelectTrigger>
@@ -250,7 +240,10 @@ export default function KanbanPage() {
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Agent Mode</Label>
-                                    <Select value={newTicket.agent_mode} onValueChange={(v) => setNewTicket({ ...newTicket, agent_mode: v as TicketAgentMode })}>
+                                    <Select
+                                        value={newTicket.agent_mode}
+                                        onValueChange={(v) => setNewTicket({ ...newTicket, agent_mode: v as TicketAgentMode })}
+                                    >
                                         <SelectTrigger className="bg-secondary border-border">
                                             <SelectValue />
                                         </SelectTrigger>
@@ -264,8 +257,10 @@ export default function KanbanPage() {
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                            <Button onClick={handleCreateTicket} disabled={!newTicket.title || isCreating}>
+                            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleCreate} disabled={!newTicket.title.trim() || isCreating}>
                                 {isCreating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                                 Create
                             </Button>
@@ -275,31 +270,29 @@ export default function KanbanPage() {
             </div>
 
             {/* Kanban Board */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-4 gap-4 h-[calc(100vh-12rem)]">
                 {columns.map((column) => {
+                    const columnTickets = tickets.filter((t) => t.status === column.id)
                     const Icon = column.icon
-                    const columnTickets = tickets.filter(t => t.status === column.id)
 
                     return (
                         <div
                             key={column.id}
-                            className="space-y-3"
+                            className="flex flex-col bg-secondary/30 rounded-xl border border-border"
                             onDragOver={handleDragOver}
-                            onDrop={(e) => handleDrop(e, column.id as TicketStatus)}
+                            onDrop={() => handleDrop(column.id as TicketStatus)}
                         >
                             {/* Column Header */}
-                            <div className="flex items-center justify-between px-2">
-                                <div className="flex items-center gap-2">
-                                    <Icon className={`w-4 h-4 ${column.color}`} />
-                                    <span className="font-medium text-sm">{column.title}</span>
-                                    <Badge variant="secondary" className="text-xs ml-1">
-                                        {columnTickets.length}
-                                    </Badge>
-                                </div>
+                            <div className="flex items-center gap-2 p-4 border-b border-border">
+                                <Icon className={`w-4 h-4 ${column.color}`} />
+                                <span className="font-medium">{column.title}</span>
+                                <Badge variant="secondary" className="ml-auto">
+                                    {columnTickets.length}
+                                </Badge>
                             </div>
 
-                            {/* Column Content */}
-                            <div className="space-y-2 min-h-[200px] p-2 rounded-xl bg-secondary/20 border border-border/50">
+                            {/* Cards */}
+                            <div className="flex-1 overflow-y-auto p-2 space-y-2">
                                 <AnimatePresence>
                                     {columnTickets.map((ticket) => (
                                         <motion.div
@@ -309,53 +302,46 @@ export default function KanbanPage() {
                                             animate={{ opacity: 1, scale: 1 }}
                                             exit={{ opacity: 0, scale: 0.9 }}
                                             draggable
-                                            onDragStart={(e) => handleDragStart(e as unknown as React.DragEvent, ticket)}
-                                            className={`p-3 rounded-lg bg-card border border-border hover:border-primary/30 transition-all cursor-grab active:cursor-grabbing ${draggedTicket?.id === ticket.id ? 'opacity-50' : ''
-                                                }`}
+                                            onDragStart={() => handleDragStart(ticket)}
+                                            className={`bg-card border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing
+                                                ${draggedTicket?.id === ticket.id ? 'opacity-50' : ''}`}
                                         >
-                                            <div className="flex items-start justify-between mb-2">
-                                                <Badge className={`text-[10px] ${priorityColors[ticket.priority || 'medium']}`}>
-                                                    {ticket.priority}
-                                                </Badge>
+                                            <div className="flex items-start justify-between gap-2">
+                                                <p className="text-sm font-medium leading-tight flex-1">
+                                                    {ticket.title}
+                                                </p>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
                                                         <Button variant="ghost" size="icon" className="h-6 w-6">
-                                                            <MoreHorizontal className="w-3 h-3" />
+                                                            <MoreHorizontal className="w-4 h-4" />
                                                         </Button>
                                                     </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" className="bg-card border-border">
-                                                        <DropdownMenuItem>Edit</DropdownMenuItem>
-                                                        <DropdownMenuItem>View Details</DropdownMenuItem>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => cycleAgentMode(ticket)}>
+                                                            Change Agent Mode
+                                                        </DropdownMenuItem>
                                                         <DropdownMenuSeparator />
                                                         <DropdownMenuItem
                                                             className="text-destructive"
-                                                            onClick={() => handleDeleteTicket(ticket)}
+                                                            onClick={() => handleDelete(ticket)}
                                                         >
                                                             Delete
                                                         </DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </div>
-                                            <h4 className="font-medium text-sm mb-1">{ticket.title}</h4>
-                                            <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
-                                                {ticket.description}
-                                            </p>
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-1.5">
-                                                    <Bot className={`w-3 h-3 ${agentModeColors[ticket.agent_mode || 'manual']}`} />
-                                                    <span className={`text-[10px] capitalize ${agentModeColors[ticket.agent_mode || 'manual']}`}>
-                                                        {ticket.agent_mode}
-                                                    </span>
-                                                </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 px-2 text-[10px]"
-                                                    onClick={() => toggleAgentMode(ticket)}
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <Badge className={priorityColors[ticket.priority]}>
+                                                    {ticket.priority}
+                                                </Badge>
+                                                <button
+                                                    onClick={() => cycleAgentMode(ticket)}
+                                                    className={`flex items-center gap-1 text-xs ${agentModeColors[ticket.agent_mode]}`}
                                                 >
-                                                    <Zap className="w-3 h-3 mr-1" />
-                                                    Delegate
-                                                </Button>
+                                                    {ticket.agent_mode === 'autonomous' && <Zap className="w-3 h-3" />}
+                                                    {ticket.agent_mode === 'assisted' && <Bot className="w-3 h-3" />}
+                                                    {ticket.agent_mode}
+                                                </button>
                                             </div>
                                         </motion.div>
                                     ))}

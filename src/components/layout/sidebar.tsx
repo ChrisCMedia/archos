@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     LayoutDashboard,
@@ -21,12 +21,14 @@ import {
     FolderOpen,
     Volume2,
     Brain,
-    BookOpen
+    BookOpen,
+    LogOut
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { createClient } from '@/lib/supabase/client'
 
 interface NavItem {
     href: string
@@ -56,6 +58,14 @@ const klausItems: NavItem[] = [
 export function Sidebar() {
     const [collapsed, setCollapsed] = useState(false)
     const pathname = usePathname()
+    const router = useRouter()
+    const supabase = createClient()
+
+    const handleLogout = async () => {
+        await supabase.auth.signOut()
+        router.push('/login')
+        router.refresh()
+    }
 
     const NavLink = ({ item }: { item: NavItem }) => {
         const isActive = pathname === item.href ||
@@ -189,8 +199,23 @@ export function Sidebar() {
                     </div>
                 </nav>
 
-                {/* Collapse Button */}
-                <div className="p-3 border-t border-border">
+                {/* Footer with Logout and Collapse */}
+                <div className="p-3 border-t border-border space-y-2">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleLogout}
+                        className="w-full justify-center text-muted-foreground hover:text-destructive"
+                    >
+                        {collapsed ? (
+                            <LogOut className="w-4 h-4" />
+                        ) : (
+                            <>
+                                <LogOut className="w-4 h-4 mr-2" />
+                                <span>Logout</span>
+                            </>
+                        )}
+                    </Button>
                     <Button
                         variant="ghost"
                         size="sm"
