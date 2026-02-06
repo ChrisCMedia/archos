@@ -33,13 +33,10 @@ export default function ChatPage() {
         setIsSending(true)
         try {
             await sendMessage({ role: 'user', content })
-            // Simulate assistant response (replace with actual AI call)
-            setTimeout(async () => {
-                await sendMessage({ role: 'assistant', content: 'I received your message. This is a placeholder response - connect to an AI backend for real responses.' })
-                setIsSending(false)
-            }, 1000)
+            // Message sent - Klaus backend will respond via realtime subscription
         } catch {
             toast({ title: 'Error', description: 'Failed to send message', variant: 'destructive' })
+        } finally {
             setIsSending(false)
         }
     }
