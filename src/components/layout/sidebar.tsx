@@ -19,7 +19,9 @@ import {
     Users,
     Clock,
     FolderOpen,
-    Volume2
+    Volume2,
+    Brain,
+    BookOpen
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -34,7 +36,9 @@ interface NavItem {
 
 const operationsItems: NavItem[] = [
     { href: '/', label: 'Mission Control', icon: LayoutDashboard },
+    { href: '/brain-dump', label: 'Brain Dump', icon: Brain },
     { href: '/kanban', label: 'Hybrid Kanban', icon: Kanban },
+    { href: '/knowledge', label: 'Knowledge Vault', icon: BookOpen },
     { href: '/chat', label: 'Neural Link', icon: MessageSquare },
     { href: '/crm', label: 'CRM', icon: Users },
 ]
